@@ -16,4 +16,25 @@
   <ItemGroup>
     <EmbeddedResource Include="Migrations\*.sql" />
   </ItemGroup>
+
+  <!-- Selectively compile vendored intro-skipper files.
+       See docs/REBASING.md for rationale and rebase instructions. -->
+  <ItemGroup>
+    <!-- Core algorithm -->
+    <Compile Include="..\vendor\intro-skipper\IntroSkipper\Analyzers\ChromaprintAnalyzer.cs" Link="Vendor\ChromaprintAnalyzer.cs" />
+    <!-- Data types (self-contained) -->
+    <Compile Include="..\vendor\intro-skipper\IntroSkipper\Data\TimeRange.cs" Link="Vendor\TimeRange.cs" />
+    <Compile Include="..\vendor\intro-skipper\IntroSkipper\Data\TimeRangeHelpers.cs" Link="Vendor\TimeRangeHelpers.cs" />
+    <Compile Include="..\vendor\intro-skipper\IntroSkipper\Data\Segment.cs" Link="Vendor\Segment.cs" />
+    <Compile Include="..\vendor\intro-skipper\IntroSkipper\Data\AnalysisMode.cs" Link="Vendor\AnalysisMode.cs" />
+    <Compile Include="..\vendor\intro-skipper\IntroSkipper\Data\EpisodeState.cs" Link="Vendor\EpisodeState.cs" />
+    <Compile Include="..\vendor\intro-skipper\IntroSkipper\Data\QueuedEpisode.cs" Link="Vendor\QueuedEpisode.cs" />
+    <Compile Include="..\vendor\intro-skipper\IntroSkipper\Data\QueuedMediaCategory.cs" Link="Vendor\QueuedMediaCategory.cs" />
+    <Compile Include="..\vendor\intro-skipper\IntroSkipper\Data\FingerprintException.cs" Link="Vendor\FingerprintException.cs" />
+    <Compile Include="..\vendor\intro-skipper\IntroSkipper\Data\PluginWarning.cs" Link="Vendor\PluginWarning.cs" />
+    <Compile Include="..\vendor\intro-skipper\IntroSkipper\Data\WarningManager.cs" Link="Vendor\WarningManager.cs" />
+    <Compile Include="..\vendor\intro-skipper\IntroSkipper\Analyzers\TimeAdjustmentHelper.cs" Link="Vendor\TimeAdjustmentHelper.cs" />
+    <!-- Configuration -->
+    <Compile Include="..\vendor\intro-skipper\IntroSkipper\Configuration\PluginConfiguration.cs" Link="Vendor\PluginConfiguration.cs" />
+  </ItemGroup>
 </Project>
