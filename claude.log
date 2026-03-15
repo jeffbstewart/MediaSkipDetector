@@ -1,0 +1,15 @@
+=== 2026-03-15 10:00 — Project inception ===
+- Created MediaSkipDetector repo (GPL-3.0) to house skip content detection
+  separate from MediaManager (different license, different lifecycle)
+- Architecture: standalone scanner that produces .skip.json files alongside
+  source MKV files on a NAS. No runtime coupling to MediaManager.
+- Filed issue #1: filesystem contract for .skip.json files
+  - {basename}.{agentname}.skip.json alongside source MKVs
+  - JSON array of {start, end, region_type} entries
+  - Region types: INTRO, END_CREDITS, ADS (extensible)
+- Key dependencies: Jellyfin intro-skipper (GPL-3.0, C#), Chromaprint (MIT/LGPL-2.1, C/C++)
+- Implementation language not yet chosen (C#, Python, or Kotlin candidates)
+- Seeded project with CLAUDE.md, .gitignore, presubmit hooks, lifecycle scripts
+- Corresponding MediaManager issue #54 implements the consumer side (NAS scan
+  reads .skip.json files, creates SkipSegment rows)
+===
