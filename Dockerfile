@@ -2,6 +2,8 @@
 FROM mcr.microsoft.com/dotnet/sdk:10.0-preview-alpine AS build
 WORKDIR /src
 COPY src/ .
+# Vendor directory sits beside src/; .csproj references ../vendor/
+COPY vendor/ /vendor/
 RUN dotnet publish -c Release -o /app
 
 # Stage 2: Runtime
