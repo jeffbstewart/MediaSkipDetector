@@ -41,30 +41,38 @@ and no runtime dependencies. The only coupling is the `.skip.json` file contract
   Python (`pyacoustid`), C# (`AcoustID.NET`). Also available via `fpcalc` CLI from any language.
 - **FFmpeg** (LGPL-2.1) — media processing. Used by Chromaprint internally and for `ffprobe`.
 
-**Language not yet chosen.** Candidates:
-- **C#** — native to the Jellyfin intro-skipper codebase, closest path to reuse
-- **Python** — most mature Chromaprint bindings (`pyacoustid`), rapid prototyping
-- **Kotlin/JVM** — team familiarity, would use `fpcalc` subprocess
+**Language: C#** (.NET). Chosen for direct compatibility with the Jellyfin intro-skipper
+codebase (GPL-3.0, C#) — the primary reference implementation we're adapting from.
+Build toolchain is `dotnet` CLI (no Gradle).
 
 ## Build and Run Commands
 
-*(To be populated once implementation language is chosen.)*
+*(To be populated once project is scaffolded.)*
+
+**Important:** All `dotnet` CLI invocations must set `DOTNET_CLI_TELEMETRY_OPTOUT=1` to
+disable Microsoft telemetry. Lifecycle scripts handle this automatically. For manual
+invocations, prefix with the environment variable:
+
+```bash
+DOTNET_CLI_TELEMETRY_OPTOUT=1 dotnet build
+```
 
 ## Lifecycle Scripts
 
 Scripts in `lifecycle/` manage development and deployment tasks:
 
+**Important:** Never use broad process kills (`taskkill //F //IM java.exe` or
+`taskkill //F //IM dotnet.exe`) without explicit permission. Other processes
+(e.g., the MediaManager transcode buddy) may be running on the same machine.
+Use targeted scripts instead:
+
 ```bash
-./lifecycle/kill-gradle.sh       # Kill Gradle daemons (does NOT kill other Java processes)
+./lifecycle/run-dev.sh          # Start dev server (output to data/dev.log)
+./lifecycle/stop-dev.sh         # Stop dev server
+./lifecycle/dev-log.sh          # Last 50 lines of dev log
+./lifecycle/dev-log.sh -f       # Follow dev log
+./lifecycle/dev-log.sh 100      # Last 100 lines
 ```
-
-**Important:** Never use broad process kills (`taskkill //F //IM java.exe`) without explicit
-permission. Other Java processes (e.g., the MediaManager transcode buddy) may be running on
-the same machine. Use targeted scripts instead:
-
-- `lifecycle/kill-gradle.sh` — kills only Gradle daemons
-- `lifecycle/run-dev.sh` — *(to be added)* start the dev server
-- `lifecycle/stop-dev.sh` — *(to be added)* stop the dev server
 
 ## Architecture
 
