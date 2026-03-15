@@ -26,9 +26,24 @@ fi
 
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 
+# Source environment variables
+ENV_FILE="$PROJECT_ROOT/secrets/.env"
+if [[ -f "$ENV_FILE" ]]; then
+    set -a
+    source "$ENV_FILE"
+    set +a
+else
+    echo "Warning: $ENV_FILE not found. Copy from secrets/example.env and fill in values."
+fi
+
+if [[ -z "${MEDIA_ROOT:-}" ]]; then
+    echo "Error: MEDIA_ROOT must be set in secrets/.env or environment"
+    exit 1
+fi
+
 echo "Building..."
 cd "$SRC_DIR"
-dotnet build --nologo -q 2>&1 || { echo "Build failed"; exit 1; }
+dotnet build --nologo 2>&1 || { echo "Build failed"; exit 1; }
 
 # Run the native executable directly (not via 'dotnet run' or 'dotnet *.dll')
 # so the PID is the actual app process and shutdown signals reach it.
