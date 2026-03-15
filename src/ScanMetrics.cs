@@ -18,4 +18,16 @@ public static class ScanMetrics
 
     public static readonly Counter DirectoriesProcessed =
         Metrics.CreateCounter("skipdetect_directories_processed_total", "Total directories processed since startup");
+
+    public static readonly Counter FingerprintCacheHits =
+        Metrics.CreateCounter("skipdetect_fingerprint_cache_hits_total", "Fingerprint cache hits during bundle preparation");
+
+    public static readonly Counter FingerprintCacheMisses =
+        Metrics.CreateCounter("skipdetect_fingerprint_cache_misses_total", "Fingerprint cache misses during bundle preparation");
+
+    public static readonly Counter BundlesCreated =
+        Metrics.CreateCounter("skipdetect_bundles_created_total", "Fingerprint bundles created since startup");
+
+    public static readonly Counter BundlesReady =
+        Metrics.CreateCounter("skipdetect_bundles_ready_total", "Fingerprint bundles that reached READY status since startup");
 }

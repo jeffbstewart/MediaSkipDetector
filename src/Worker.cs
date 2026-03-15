@@ -15,11 +15,9 @@ public class Worker(
     DirectoryScanner scanner,
     WorkQueue workQueue,
     ServerStatus serverStatus,
-    AppConfig appConfig,
-    IFingerprintCache fingerprintCache) : BackgroundService
+    IFingerprintPipelineService pipeline) : BackgroundService
 {
     private static readonly TimeSpan SleepDuration = TimeSpan.FromHours(4);
-    private static readonly TimeSpan ProcessingPlaceholder = TimeSpan.FromSeconds(5);
 
     private CancellationTokenSource? _sleepCts;
     private volatile bool _rescanRequested;
@@ -79,8 +77,20 @@ public class Worker(
 
                 var itemStopwatch = Stopwatch.StartNew();
 
-                // Placeholder: sleep 5 seconds instead of actual processing
-                await clock.Delay(ProcessingPlaceholder, stoppingToken);
+                var prep = pipeline.PrepareBundle(candidate);
+                logger.LogInformation(
+                    "Bundle {Dir}: {Cached} cached, {Pending} pending, {Failed} permanently failed",
+                    candidate.Directory.Name, prep.CachedCount, prep.PendingCount, prep.FailedCount);
+
+                while (pipeline.GetNextPendingItem(prep.BundleId) is { } item)
+                {
+                    // TODO: run fpcalc here (next commit)
+                    logger.LogInformation("Would fingerprint: {File} (fpcalc not yet wired)", item.FileName);
+                    pipeline.FailWorkItem(item.Id, "fpcalc not yet implemented");
+                }
+
+                if (pipeline.CheckBundleCompletion(prep.BundleId))
+                    logger.LogInformation("Bundle READY for analysis: {Dir}", candidate.Directory.Name);
 
                 itemStopwatch.Stop();
                 ScanMetrics.DirectoriesProcessed.Inc();

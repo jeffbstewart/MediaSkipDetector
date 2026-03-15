@@ -52,6 +52,12 @@ builder.Services.AddSingleton(sp => new DatabaseInitializer(
 builder.Services.AddSingleton<IFingerprintCache>(sp => new FingerprintCache(
     sp.GetRequiredService<DatabaseInitializer>().Connection,
     sp.GetRequiredService<ILogger<FingerprintCache>>()));
+builder.Services.AddSingleton<IFingerprintPipelineService>(sp => new FingerprintPipelineService(
+    sp.GetRequiredService<DatabaseInitializer>().Connection,
+    sp.GetRequiredService<IFingerprintCache>(),
+    sp.GetRequiredService<AppConfig>(),
+    sp.GetRequiredService<IClock>(),
+    sp.GetRequiredService<ILogger<FingerprintPipelineService>>()));
 builder.Services.AddSingleton<Worker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Worker>());
 
