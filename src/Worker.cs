@@ -14,7 +14,9 @@ public class Worker(
     IClock clock,
     DirectoryScanner scanner,
     WorkQueue workQueue,
-    ServerStatus serverStatus) : BackgroundService
+    ServerStatus serverStatus,
+    AppConfig appConfig,
+    IFingerprintCache fingerprintCache) : BackgroundService
 {
     private static readonly TimeSpan SleepDuration = TimeSpan.FromHours(4);
     private static readonly TimeSpan ProcessingPlaceholder = TimeSpan.FromSeconds(5);

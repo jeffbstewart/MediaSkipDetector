@@ -18,12 +18,15 @@ services:
     # ── Volumes ──────────────────────────────────────────────────────
     # media: your ripped media files. MUST BE READ/WRITE — the scanner
     #        writes .skip.json result files alongside source MKVs.
+    # data:  persistent data directory (SQLite fingerprint cache, etc.)
     volumes:
       - /volume1/your-media-share:/media
+      - /volume1/docker/skipdetector/data:/data
 
     # ── Environment ──────────────────────────────────────────────────
     environment:
       - MEDIA_ROOT=/media
+      - DATA_DIR=/data
 
     # ── Health Check ─────────────────────────────────────────────────
     healthcheck:

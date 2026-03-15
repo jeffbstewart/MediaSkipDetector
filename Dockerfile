@@ -11,6 +11,7 @@ RUN apk add --no-cache curl
 # In production, docker-compose user: directive overrides to match NAS permissions.
 WORKDIR /app
 COPY --from=build /app .
+VOLUME /data
 USER app
 EXPOSE 16004
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \

@@ -13,3 +13,31 @@
 - Corresponding MediaManager issue #54 implements the consumer side (NAS scan
   reads .skip.json files, creates SkipSegment rows)
 ===
+
+=== 2026-03-15 13:00 — C# scaffold, Docker, CI/CD, directory scanner ===
+- (Prior session — commits already on main)
+- Chose C# / .NET 10 as implementation language
+- Built ASP.NET minimal API scaffold with Worker BackgroundService
+- Added Dockerfile (Alpine multi-stage), docker-compose.yml, GitHub Actions CI/CD
+- Implemented DirectoryScanner, WorkQueue, ScanMetrics, ServerStatus
+- HTTP endpoints: /health, /status, /metrics, /scannow, /quitquitquit
+- IClock abstraction for testable time
+===
+
+=== 2026-03-15 15:15 — SQLite fingerprint cache and data directory ===
+- Added FingerprintCache (IFingerprintCache) backed by SQLite with WAL mode
+  - Freshness check by file_size + last_modified
+  - uint[] fingerprints serialized as little-endian BLOB via Buffer.BlockCopy
+  - Prune method for batch-deleting entries whose files no longer exist
+  - ToRelativePath helper for portable forward-slash relative paths
+- Added AppConfig record (MediaRoot, DataDir) registered as DI singleton
+- Added Microsoft.Data.Sqlite 9.0.3 NuGet dependency
+- Program.cs: parse DATA_DIR (env > CLI > ./data default), register cache + config
+- Worker.cs: accepts AppConfig and IFingerprintCache (wired for next step)
+- docker-compose.yml: added /data volume mount and DATA_DIR env var
+- Dockerfile: added VOLUME /data
+- secrets/example.env: documented DATA_DIR
+- Files created: src/AppConfig.cs, src/FingerprintCache.cs
+- Files modified: src/Program.cs, src/Worker.cs, src/MediaSkipDetector.csproj,
+  Dockerfile, docker-compose.yml, secrets/example.env
+===
