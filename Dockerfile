@@ -9,9 +9,10 @@ RUN dotnet publish -c Release -o /app --no-restore
 # Stage 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview-alpine
 RUN apk add --no-cache curl
-RUN addgroup -g 100 -S users 2>/dev/null || true; adduser -u 1046 -G users -S app
+# The ASP.NET Alpine image includes an 'app' user (UID 1654).
+# In production, docker-compose user: directive overrides to match NAS permissions.
 WORKDIR /app
-COPY --from=build --chown=app:users /app .
+COPY --from=build /app .
 USER app
 EXPOSE 16004
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
