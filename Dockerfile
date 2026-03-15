@@ -1,10 +1,8 @@
 # Stage 1: Build
 FROM mcr.microsoft.com/dotnet/sdk:10.0-preview-alpine AS build
 WORKDIR /src
-COPY src/*.csproj .
-RUN dotnet restore
 COPY src/ .
-RUN dotnet publish -c Release -o /app --no-restore
+RUN dotnet publish -c Release -o /app
 
 # Stage 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview-alpine
