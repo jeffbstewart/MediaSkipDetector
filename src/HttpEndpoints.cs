@@ -97,6 +97,9 @@ public static class HttpEndpoints
             <h2>Fingerprinting</h2>
             <p>fpcalc: {fpcalcStatus} | Cache entries: {cacheCount}</p>
             <p>This run: {fingerprinted} fingerprinted, {fpErrors} errors | Cache: {cacheHits} hits, {cacheMisses} misses</p>
+            <h2>Intro Detection</h2>
+            <p>Bundles analyzed: {ScanMetrics.BundlesAnalyzed.Value} | Intros detected: {ScanMetrics.IntrosDetected.Value} | Errors: {ScanMetrics.AnalysisErrors.Value}</p>
+            {RenderAnalysisHistory(status, enc)}
             <h2>Pending Work</h2>
             <table border="1" cellpadding="6" cellspacing="0">
             <tr><th>Directory</th><th>Files</th><th>Newest MKV</th></tr>
@@ -105,6 +108,53 @@ public static class HttpEndpoints
             </body></html>
             """;
         return Results.Content(html, "text/html");
+    }
+
+    private static string RenderAnalysisHistory(ServerStatus status, Func<string?, string> enc)
+    {
+        var history = status.GetAnalysisHistory();
+        if (history.Count == 0)
+            return "<p><em>No analyses completed yet.</em></p>";
+
+        var rows = "";
+        foreach (var entry in history)
+        {
+            string outcome;
+            string style;
+            if (entry.Error != null)
+            {
+                outcome = $"Error: {enc(entry.Error)}";
+                style = "color:red;";
+            }
+            else if (entry.IntrosFound > 0)
+            {
+                outcome = $"Found intros in {entry.IntrosFound}/{entry.EpisodeCount} episodes";
+                style = "color:green;";
+            }
+            else
+            {
+                outcome = "No intros found";
+                style = "color:gray;";
+            }
+
+            rows += $"""
+                <tr>
+                    <td>{entry.Timestamp:HH:mm:ss}</td>
+                    <td>{enc(entry.DirectoryName)}</td>
+                    <td>{entry.EpisodeCount}</td>
+                    <td>{entry.Comparisons}</td>
+                    <td style="{style}">{outcome}</td>
+                    <td>{entry.Elapsed.TotalSeconds:F1}s</td>
+                </tr>
+                """;
+        }
+
+        return $"""
+            <table border="1" cellpadding="6" cellspacing="0">
+            <tr><th>Time</th><th>Directory</th><th>Episodes</th><th>Comparisons</th><th>Outcome</th><th>Elapsed</th></tr>
+            {rows}
+            </table>
+            """;
     }
 
     private static IResult HandleShutdown(IHostApplicationLifetime lifetime, ILogger<ServerStatus> logger)

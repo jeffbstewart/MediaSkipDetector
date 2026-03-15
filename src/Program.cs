@@ -46,8 +46,22 @@ builder.Logging.AddSimpleConsole(options =>
 
 builder.WebHost.UseUrls($"http://*:{port}");
 
-// Register services
-var appConfig = new AppConfig(mediaRoot, dataDir, fpcalcPath);
+// Register services — analysis tuning via environment variables (see docs/TUNING.md)
+static int EnvInt(string name, int fallback) =>
+    int.TryParse(Environment.GetEnvironmentVariable(name), out var v) ? v : fallback;
+static double EnvDouble(string name, double fallback) =>
+    double.TryParse(Environment.GetEnvironmentVariable(name), out var v) ? v : fallback;
+
+var appConfig = new AppConfig(mediaRoot, dataDir, fpcalcPath)
+{
+    MaxFingerprintPointDifferences = EnvInt("MAX_FINGERPRINT_POINT_DIFFERENCES", 6),
+    MaxTimeSkip = EnvDouble("MAX_TIME_SKIP", 3.5),
+    InvertedIndexShift = EnvInt("INVERTED_INDEX_SHIFT", 2),
+    MinIntroDuration = EnvInt("MIN_INTRO_DURATION", 15),
+    MaxIntroDuration = EnvInt("MAX_INTRO_DURATION", 120),
+    MaxComparisonCandidates = EnvInt("MAX_COMPARISON_CANDIDATES", 7),
+    FingerprintLengthSeconds = EnvInt("FINGERPRINT_LENGTH_SECONDS", 120),
+};
 builder.Services.AddSingleton(appConfig);
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<ServerStatus>();
@@ -70,6 +84,13 @@ builder.Services.AddSingleton<IFingerprintPipelineService>(sp => new Fingerprint
     sp.GetRequiredService<AppConfig>(),
     sp.GetRequiredService<IClock>(),
     sp.GetRequiredService<ILogger<FingerprintPipelineService>>()));
+builder.Services.AddSingleton<IIntroAnalysisService>(sp => new IntroAnalysisService(
+    sp.GetRequiredService<DatabaseInitializer>().Connection,
+    sp.GetRequiredService<IFingerprintCache>(),
+    sp.GetRequiredService<AppConfig>(),
+    sp.GetRequiredService<IClock>(),
+    sp.GetRequiredService<ILogger<IntroAnalysisService>>(),
+    sp.GetRequiredService<ILoggerFactory>()));
 builder.Services.AddSingleton<Worker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Worker>());
 

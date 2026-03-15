@@ -36,4 +36,13 @@ public static class ScanMetrics
 
     public static readonly Counter FingerprintErrors =
         Metrics.CreateCounter("skipdetect_fingerprint_errors_total", "Fingerprinting errors since startup");
+
+    public static readonly Counter BundlesAnalyzed =
+        Metrics.CreateCounter("skipdetect_bundles_analyzed_total", "Bundles analyzed for intros since startup");
+
+    public static readonly Counter IntrosDetected =
+        Metrics.CreateCounter("skipdetect_intros_detected_total", "Intro segments detected since startup");
+
+    public static readonly Counter AnalysisErrors =
+        Metrics.CreateCounter("skipdetect_analysis_errors_total", "Analysis errors since startup");
 }

@@ -17,7 +17,8 @@ public class Worker(
     ServerStatus serverStatus,
     IFingerprintPipelineService pipeline,
     IFpcalcService fpcalc,
-    IFingerprintCache fingerprintCache) : BackgroundService
+    IFingerprintCache fingerprintCache,
+    IIntroAnalysisService introAnalysis) : BackgroundService
 {
     private static readonly TimeSpan SleepDuration = TimeSpan.FromHours(4);
 
@@ -91,8 +92,18 @@ public class Worker(
                     FingerprintWorkItem(item, stoppingToken);
                 }
 
-                if (pipeline.CheckBundleCompletion(prep.BundleId))
-                    logger.LogInformation("Bundle READY for analysis: {Dir}", candidate.Directory.Name);
+                var justBecameReady = pipeline.CheckBundleCompletion(prep.BundleId);
+                var alreadyReady = !justBecameReady && prep.PendingCount == 0;
+
+                if (justBecameReady || alreadyReady)
+                {
+                    if (justBecameReady)
+                        logger.LogInformation("Bundle READY, analyzing: {Dir}", candidate.Directory.Name);
+                    else
+                        logger.LogInformation("Bundle already READY (all cached), re-analyzing: {Dir}", candidate.Directory.Name);
+
+                    AnalyzeBundle(candidate);
+                }
 
                 itemStopwatch.Stop();
                 ScanMetrics.DirectoriesProcessed.Inc();
@@ -143,6 +154,47 @@ public class Worker(
 
         serverStatus.ScanState = ScanState.Idle;
         logger.LogInformation("MediaSkipDetector shutting down");
+    }
+
+    private void AnalyzeBundle(ScanCandidate candidate)
+    {
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            var result = introAnalysis.AnalyzeBundle(candidate);
+            sw.Stop();
+
+            serverStatus.RecordAnalysis(new AnalysisHistoryEntry(
+                clock.Now, candidate.Directory.Name, candidate.MkvFileNames.Count,
+                result.EpisodesWithIntros, result.TotalComparisons, sw.Elapsed, null));
+
+            if (result.EpisodesWithIntros > 0)
+            {
+                logger.LogInformation(
+                    "Analysis complete for {Dir}: found intros in {Count} episodes ({Comparisons} comparisons) in {Elapsed}, wrote {Output}",
+                    candidate.Directory.Name, result.EpisodesWithIntros, result.TotalComparisons,
+                    sw.Elapsed, result.OutputFilePath);
+                ScanMetrics.IntrosDetected.Inc(result.EpisodesWithIntros);
+            }
+            else
+            {
+                logger.LogInformation(
+                    "Analysis complete for {Dir}: no intros found ({Comparisons} comparisons) in {Elapsed}",
+                    candidate.Directory.Name, result.TotalComparisons, sw.Elapsed);
+            }
+
+            ScanMetrics.BundlesAnalyzed.Inc();
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning("Analysis failed for {Dir}: {Error}", candidate.Directory.Name, ex.Message);
+
+            serverStatus.RecordAnalysis(new AnalysisHistoryEntry(
+                clock.Now, candidate.Directory.Name, candidate.MkvFileNames.Count,
+                0, 0, TimeSpan.Zero, ex.Message));
+
+            ScanMetrics.AnalysisErrors.Inc();
+        }
     }
 
     private void FingerprintWorkItem(WorkItemInfo item, CancellationToken ct)

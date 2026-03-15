@@ -9,11 +9,27 @@ public enum ScanState
 }
 
 /// <summary>
+/// One entry in the recent intro detection history.
+/// </summary>
+public record AnalysisHistoryEntry(
+    DateTime Timestamp,
+    string DirectoryName,
+    int EpisodeCount,
+    int IntrosFound,
+    int Comparisons,
+    TimeSpan Elapsed,
+    string? Error);
+
+/// <summary>
 /// Tracks server runtime state for the /status and /health endpoints.
 /// Registered as a singleton in DI.
 /// </summary>
 public class ServerStatus
 {
+    private const int MaxHistoryEntries = 20;
+    private readonly LinkedList<AnalysisHistoryEntry> _analysisHistory = new();
+    private readonly object _historyLock = new();
+
     public DateTime StartedAt { get; } = DateTime.Now;
     public string Health { get; set; } = "healthy";
 
@@ -25,4 +41,20 @@ public class ServerStatus
     public WorkQueue? WorkQueue { get; set; }
     public int ProcessedInCurrentRun { get; set; }
     public int TotalInCurrentRun { get; set; }
+
+    public void RecordAnalysis(AnalysisHistoryEntry entry)
+    {
+        lock (_historyLock)
+        {
+            _analysisHistory.AddFirst(entry);
+            while (_analysisHistory.Count > MaxHistoryEntries)
+                _analysisHistory.RemoveLast();
+        }
+    }
+
+    public List<AnalysisHistoryEntry> GetAnalysisHistory()
+    {
+        lock (_historyLock)
+            return [.. _analysisHistory];
+    }
 }

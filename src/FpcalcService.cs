@@ -28,15 +28,16 @@ public interface IFpcalcService
 public class FpcalcService : IFpcalcService
 {
     private static readonly TimeSpan Timeout = TimeSpan.FromMinutes(5);
-    private const int FingerprintLengthSeconds = 120;
 
     private readonly string? _fpcalcPath;
+    private readonly int _fingerprintLengthSeconds;
     private readonly ILogger<FpcalcService> _logger;
 
     public FpcalcService(AppConfig appConfig, ILogger<FpcalcService> logger)
     {
         _logger = logger;
         _fpcalcPath = ResolvePath(appConfig.FpcalcPath);
+        _fingerprintLengthSeconds = appConfig.FingerprintLengthSeconds;
 
         if (_fpcalcPath != null)
             _logger.LogInformation("fpcalc available at {Path}", _fpcalcPath);
@@ -54,7 +55,7 @@ public class FpcalcService : IFpcalcService
         var psi = new ProcessStartInfo
         {
             FileName = _fpcalcPath,
-            ArgumentList = { "-raw", "-json", "-length", FingerprintLengthSeconds.ToString(), filePath },
+            ArgumentList = { "-raw", "-json", "-length", _fingerprintLengthSeconds.ToString(), filePath },
             RedirectStandardOutput = true,
             RedirectStandardError = true,
             UseShellExecute = false,
