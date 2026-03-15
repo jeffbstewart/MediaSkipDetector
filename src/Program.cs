@@ -26,6 +26,15 @@ if (string.IsNullOrWhiteSpace(mediaRoot))
 // DATA_DIR: environment variable takes precedence, then CLI arg, then default
 dataDir = Environment.GetEnvironmentVariable("DATA_DIR") ?? dataDir ?? "./data";
 
+// FPCALC_PATH: environment variable or CLI arg
+string? fpcalcPath = null;
+foreach (var arg in args)
+{
+    if (arg.StartsWith("--fpcalc-path="))
+        fpcalcPath = arg["--fpcalc-path=".Length..];
+}
+fpcalcPath = Environment.GetEnvironmentVariable("FPCALC_PATH") ?? fpcalcPath;
+
 var builder = WebApplication.CreateBuilder(args);
 
 // Log to stderr with timestamps
@@ -38,7 +47,7 @@ builder.Logging.AddSimpleConsole(options =>
 builder.WebHost.UseUrls($"http://*:{port}");
 
 // Register services
-var appConfig = new AppConfig(mediaRoot, dataDir);
+var appConfig = new AppConfig(mediaRoot, dataDir, fpcalcPath);
 builder.Services.AddSingleton(appConfig);
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<ServerStatus>();
@@ -52,6 +61,9 @@ builder.Services.AddSingleton(sp => new DatabaseInitializer(
 builder.Services.AddSingleton<IFingerprintCache>(sp => new FingerprintCache(
     sp.GetRequiredService<DatabaseInitializer>().Connection,
     sp.GetRequiredService<ILogger<FingerprintCache>>()));
+builder.Services.AddSingleton<IFpcalcService>(sp => new FpcalcService(
+    sp.GetRequiredService<AppConfig>(),
+    sp.GetRequiredService<ILogger<FpcalcService>>()));
 builder.Services.AddSingleton<IFingerprintPipelineService>(sp => new FingerprintPipelineService(
     sp.GetRequiredService<DatabaseInitializer>().Connection,
     sp.GetRequiredService<IFingerprintCache>(),

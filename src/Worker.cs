@@ -15,7 +15,9 @@ public class Worker(
     DirectoryScanner scanner,
     WorkQueue workQueue,
     ServerStatus serverStatus,
-    IFingerprintPipelineService pipeline) : BackgroundService
+    IFingerprintPipelineService pipeline,
+    IFpcalcService fpcalc,
+    IFingerprintCache fingerprintCache) : BackgroundService
 {
     private static readonly TimeSpan SleepDuration = TimeSpan.FromHours(4);
 
@@ -37,7 +39,8 @@ public class Worker(
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        logger.LogInformation("MediaSkipDetector starting");
+        logger.LogInformation("MediaSkipDetector starting (fpcalc: {Status})",
+            fpcalc.IsAvailable ? "available" : "NOT AVAILABLE");
 
         while (!stoppingToken.IsCancellationRequested)
         {
@@ -82,11 +85,10 @@ public class Worker(
                     "Bundle {Dir}: {Cached} cached, {Pending} pending, {Failed} permanently failed",
                     candidate.Directory.Name, prep.CachedCount, prep.PendingCount, prep.FailedCount);
 
-                while (pipeline.GetNextPendingItem(prep.BundleId) is { } item)
+                while (pipeline.GetNextPendingItem(prep.BundleId) is { } item
+                       && !stoppingToken.IsCancellationRequested)
                 {
-                    // TODO: run fpcalc here (next commit)
-                    logger.LogInformation("Would fingerprint: {File} (fpcalc not yet wired)", item.FileName);
-                    pipeline.FailWorkItem(item.Id, "fpcalc not yet implemented");
+                    FingerprintWorkItem(item, stoppingToken);
                 }
 
                 if (pipeline.CheckBundleCompletion(prep.BundleId))
@@ -141,5 +143,43 @@ public class Worker(
 
         serverStatus.ScanState = ScanState.Idle;
         logger.LogInformation("MediaSkipDetector shutting down");
+    }
+
+    private void FingerprintWorkItem(WorkItemInfo item, CancellationToken ct)
+    {
+        if (!fpcalc.IsAvailable)
+        {
+            pipeline.FailWorkItem(item.Id, "fpcalc not available — set FPCALC_PATH");
+            ScanMetrics.FingerprintErrors.Inc();
+            return;
+        }
+
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            var result = fpcalc.Run(item.FullPath, ct);
+            sw.Stop();
+
+            // Store in cache
+            var fileInfo = new FileInfo(item.FullPath);
+            fingerprintCache.Put(item.RelativePath, fileInfo.Length, fileInfo.LastWriteTimeUtc,
+                result.Fingerprint, result.DurationSeconds);
+
+            pipeline.CompleteWorkItem(item.Id);
+            ScanMetrics.FilesFingerprinted.Inc();
+
+            logger.LogInformation("Fingerprinted {File}: {Duration:F1}s, {Points} points in {Elapsed}",
+                item.FileName, result.DurationSeconds, result.Fingerprint.Length, sw.Elapsed);
+        }
+        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        {
+            throw; // Let shutdown propagate
+        }
+        catch (Exception ex)
+        {
+            logger.LogWarning("Failed to fingerprint {File}: {Error}", item.FileName, ex.Message);
+            pipeline.FailWorkItem(item.Id, ex.Message);
+            ScanMetrics.FingerprintErrors.Inc();
+        }
     }
 }

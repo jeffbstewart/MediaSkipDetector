@@ -30,4 +30,10 @@ public static class ScanMetrics
 
     public static readonly Counter BundlesReady =
         Metrics.CreateCounter("skipdetect_bundles_ready_total", "Fingerprint bundles that reached READY status since startup");
+
+    public static readonly Counter FilesFingerprinted =
+        Metrics.CreateCounter("skipdetect_files_fingerprinted_total", "Files successfully fingerprinted since startup");
+
+    public static readonly Counter FingerprintErrors =
+        Metrics.CreateCounter("skipdetect_fingerprint_errors_total", "Fingerprinting errors since startup");
 }
