@@ -161,6 +161,24 @@ services:
 ### Prerequisites
 
 - [.NET SDK 10.0+](https://dotnet.microsoft.com/download)
+- **fpcalc** (Chromaprint CLI) — required for audio fingerprinting
+
+#### Installing fpcalc on Windows
+
+1. Download the latest Chromaprint release from https://github.com/acoustid/chromaprint/releases (look for `chromaprint-fpcalc-*-windows-x86_64.zip`)
+2. Extract `fpcalc.exe` to a permanent location (e.g., `C:\fpcalc\fpcalc.exe`)
+3. Set the path in your `secrets/.env` file:
+   ```
+   FPCALC_PATH=C:\fpcalc\fpcalc.exe
+   ```
+   Or pass it as a CLI argument: `--fpcalc-path=C:\fpcalc\fpcalc.exe`
+
+Verify it works:
+```bash
+C:\fpcalc\fpcalc.exe -version
+```
+
+In Docker, `fpcalc` is installed automatically via the Alpine `chromaprint-tools` package.
 
 ### Build and Run
 

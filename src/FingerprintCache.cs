@@ -1,4 +1,3 @@
-using System.Runtime.InteropServices;
 using Microsoft.Data.Sqlite;
 
 namespace MediaSkipDetector;
@@ -37,45 +36,16 @@ public interface IFingerprintCache
     int Count { get; }
 }
 
-public class FingerprintCache : IFingerprintCache, IDisposable
+public class FingerprintCache : IFingerprintCache
 {
     private readonly SqliteConnection _connection;
     private readonly ILogger<FingerprintCache> _logger;
 
-    public FingerprintCache(string dataDir, ILogger<FingerprintCache> logger)
+    public FingerprintCache(SqliteConnection connection, ILogger<FingerprintCache> logger)
     {
+        _connection = connection;
         _logger = logger;
-
-        Directory.CreateDirectory(dataDir);
-        var dbPath = Path.Combine(dataDir, "fingerprints.db");
-
-        _connection = new SqliteConnection($"Data Source={dbPath}");
-        _connection.Open();
-
-        // WAL mode for concurrent reads during HTTP status requests
-        using (var cmd = _connection.CreateCommand())
-        {
-            cmd.CommandText = "PRAGMA journal_mode=WAL;";
-            cmd.ExecuteNonQuery();
-        }
-
-        using (var cmd = _connection.CreateCommand())
-        {
-            cmd.CommandText = """
-                CREATE TABLE IF NOT EXISTS fingerprint_cache (
-                    relative_path     TEXT    NOT NULL PRIMARY KEY,
-                    file_size         INTEGER NOT NULL,
-                    last_modified     TEXT    NOT NULL,
-                    fingerprint       BLOB    NOT NULL,
-                    duration_seconds  REAL    NOT NULL,
-                    fpcalc_version    TEXT,
-                    created_at        TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
-                );
-                """;
-            cmd.ExecuteNonQuery();
-        }
-
-        _logger.LogInformation("Fingerprint cache opened: {DbPath} ({Count} entries)", dbPath, Count);
+        _logger.LogInformation("Fingerprint cache ready ({Count} entries)", Count);
     }
 
     public CachedFingerprint? Get(string relativePath, long fileSize, DateTime lastModifiedUtc)
@@ -168,11 +138,6 @@ public class FingerprintCache : IFingerprintCache, IDisposable
             cmd.CommandText = "SELECT COUNT(*) FROM fingerprint_cache;";
             return Convert.ToInt32(cmd.ExecuteScalar());
         }
-    }
-
-    public void Dispose()
-    {
-        _connection.Dispose();
     }
 
     // ── Serialization helpers ──────────────────────────────────────────

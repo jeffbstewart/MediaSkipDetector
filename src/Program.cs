@@ -46,8 +46,11 @@ builder.Services.AddSingleton<WorkQueue>();
 builder.Services.AddSingleton(sp => new DirectoryScanner(
     mediaRoot,
     sp.GetRequiredService<ILogger<DirectoryScanner>>()));
-builder.Services.AddSingleton<IFingerprintCache>(sp => new FingerprintCache(
+builder.Services.AddSingleton(sp => new DatabaseInitializer(
     appConfig.DataDir,
+    sp.GetRequiredService<ILogger<DatabaseInitializer>>()));
+builder.Services.AddSingleton<IFingerprintCache>(sp => new FingerprintCache(
+    sp.GetRequiredService<DatabaseInitializer>().Connection,
     sp.GetRequiredService<ILogger<FingerprintCache>>()));
 builder.Services.AddSingleton<Worker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<Worker>());
