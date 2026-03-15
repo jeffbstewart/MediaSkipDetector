@@ -9,7 +9,7 @@ RUN dotnet publish -c Release -o /app --no-restore
 # Stage 2: Runtime
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-preview-alpine
 RUN apk add --no-cache curl
-RUN addgroup -g 100 -S users 2>/dev/null; adduser -u 1046 -G users -S app
+RUN addgroup -g 100 -S users 2>/dev/null || true; adduser -u 1046 -G users -S app
 WORKDIR /app
 COPY --from=build --chown=app:users /app .
 USER app
