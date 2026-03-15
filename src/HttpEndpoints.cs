@@ -37,7 +37,8 @@ public static class HttpEndpoints
         return Results.Ok(new { status });
     }
 
-    private static IResult HandleStatus(ServerStatus status)
+    private static IResult HandleStatus(
+        ServerStatus status, IFpcalcService fpcalcService, IFingerprintCache fingerprintCache)
     {
         var uptime = DateTime.Now - status.StartedAt;
         var pendingItems = status.WorkQueue?.PendingItems ?? [];
@@ -72,6 +73,16 @@ public static class HttpEndpoints
             ? $"{status.LastScanTime.Value:yyyy-MM-dd HH:mm:ss}"
             : "never";
 
+        var fpcalcStatus = fpcalcService.IsAvailable
+            ? "<span style=\"color:green;\">available</span>"
+            : "<span style=\"color:red;\">NOT AVAILABLE</span>";
+
+        var cacheCount = fingerprintCache.Count;
+        var fingerprinted = ScanMetrics.FilesFingerprinted.Value;
+        var fpErrors = ScanMetrics.FingerprintErrors.Value;
+        var cacheHits = ScanMetrics.FingerprintCacheHits.Value;
+        var cacheMisses = ScanMetrics.FingerprintCacheMisses.Value;
+
         var html = $"""
             <!DOCTYPE html>
             <html><head><meta charset="utf-8"><title>MediaSkipDetector</title></head>
@@ -83,6 +94,9 @@ public static class HttpEndpoints
             <p>Currently processing: {currentlyProcessing}</p>
             <h2>Last Scan Results</h2>
             {lastScanSection}
+            <h2>Fingerprinting</h2>
+            <p>fpcalc: {fpcalcStatus} | Cache entries: {cacheCount}</p>
+            <p>This run: {fingerprinted} fingerprinted, {fpErrors} errors | Cache: {cacheHits} hits, {cacheMisses} misses</p>
             <h2>Pending Work</h2>
             <table border="1" cellpadding="6" cellspacing="0">
             <tr><th>Directory</th><th>Files</th><th>Newest MKV</th></tr>
