@@ -60,7 +60,7 @@ var appConfig = new AppConfig(mediaRoot, dataDir, fpcalcPath)
     MinIntroDuration = EnvInt("MIN_INTRO_DURATION", 15),
     MaxIntroDuration = EnvInt("MAX_INTRO_DURATION", 120),
     MaxComparisonCandidates = EnvInt("MAX_COMPARISON_CANDIDATES", 7),
-    FingerprintLengthSeconds = EnvInt("FINGERPRINT_LENGTH_SECONDS", 120),
+    FingerprintLengthSeconds = EnvInt("FINGERPRINT_LENGTH_SECONDS", 600),
 };
 builder.Services.AddSingleton(appConfig);
 builder.Services.AddSingleton<IClock, SystemClock>();

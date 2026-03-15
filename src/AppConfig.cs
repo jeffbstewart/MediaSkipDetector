@@ -24,5 +24,5 @@ public record AppConfig(string MediaRoot, string DataDir, string? FpcalcPath)
     public int MaxComparisonCandidates { get; init; } = 7;
 
     /// <summary>Seconds of audio to fingerprint per file.</summary>
-    public int FingerprintLengthSeconds { get; init; } = 120;
+    public int FingerprintLengthSeconds { get; init; } = 600;
 }

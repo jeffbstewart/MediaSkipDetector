@@ -12,7 +12,7 @@ Set via environment variables (in `secrets/.env` for local dev, or in
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `FPCALC_PATH` | _(auto-detect)_ | Path to fpcalc binary. Auto-detected on PATH if not set. In Docker, installed via `apk add chromaprint`. |
-| `FINGERPRINT_LENGTH_SECONDS` | `120` | Seconds of audio to fingerprint per episode. Intros are typically in the first 90-120 seconds. Increasing this costs more CPU and cache space but catches later intros. |
+| `FINGERPRINT_LENGTH_SECONDS` | `600` | Seconds of audio to fingerprint per episode (default 10 minutes, matching Jellyfin's `AnalysisLengthLimit`). Each fingerprint point covers ~0.12s, so 600s produces ~4800 points. Reducing to 120 saves CPU/cache but misses intros that start after 2 minutes. |
 
 ## Comparison Strategy
 

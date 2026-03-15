@@ -98,8 +98,8 @@ public class FpcalcService : IFpcalcService
         var i = 0;
         foreach (var element in fpArray.EnumerateArray())
         {
-            // fpcalc -raw outputs signed int32 values; we store as uint32
-            fingerprint[i++] = unchecked((uint)element.GetInt32());
+            // fpcalc -raw outputs unsigned 32-bit integers as JSON numbers
+            fingerprint[i++] = element.GetUInt32();
         }
 
         return new FpcalcResult(fingerprint, duration);

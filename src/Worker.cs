@@ -164,8 +164,9 @@ public class Worker(
             var result = introAnalysis.AnalyzeBundle(candidate);
             sw.Stop();
 
+            var displayName = FormatDirectoryDisplay(candidate.Directory);
             serverStatus.RecordAnalysis(new AnalysisHistoryEntry(
-                clock.Now, candidate.Directory.Name, candidate.MkvFileNames.Count,
+                clock.Now, displayName, candidate.MkvFileNames.Count,
                 result.EpisodesWithIntros, result.TotalComparisons, sw.Elapsed, null));
 
             if (result.EpisodesWithIntros > 0)
@@ -189,12 +190,22 @@ public class Worker(
         {
             logger.LogWarning("Analysis failed for {Dir}: {Error}", candidate.Directory.Name, ex.Message);
 
+            var displayName = FormatDirectoryDisplay(candidate.Directory);
             serverStatus.RecordAnalysis(new AnalysisHistoryEntry(
-                clock.Now, candidate.Directory.Name, candidate.MkvFileNames.Count,
+                clock.Now, displayName, candidate.MkvFileNames.Count,
                 0, 0, TimeSpan.Zero, ex.Message));
 
             ScanMetrics.AnalysisErrors.Inc();
         }
+    }
+
+    /// <summary>
+    /// Formats a directory for display as "ParentName / LeafName" (e.g., "Xena Warrior Princess / S06").
+    /// </summary>
+    private static string FormatDirectoryDisplay(DirectoryInfo dir)
+    {
+        var parent = dir.Parent?.Name;
+        return parent != null ? $"{parent} / {dir.Name}" : dir.Name;
     }
 
     private void FingerprintWorkItem(WorkItemInfo item, CancellationToken ct)

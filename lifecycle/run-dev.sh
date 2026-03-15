@@ -53,6 +53,15 @@ if [[ ! -f "$EXE_PATH" ]]; then
     exit 1
 fi
 
+# Report DB state before launch (DATA_DIR may be set from .env above)
+DB_PATH="${DATA_DIR:-./data}/skipdetector.db"
+if [[ -f "$DB_PATH" ]]; then
+    DB_SIZE=$(du -h "$DB_PATH" | cut -f1)
+    echo "Database exists: $DB_PATH ($DB_SIZE)"
+else
+    echo "Database missing (will be created): $DB_PATH"
+fi
+
 echo "Starting MediaSkipDetector (logs: $LOG_FILE)..."
 "$EXE_PATH" > "$LOG_FILE" 2>&1 &
 echo $! > "$PID_FILE"
