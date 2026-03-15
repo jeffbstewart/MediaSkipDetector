@@ -1,0 +1,14 @@
+bin/
+obj/
+BenchmarkDotNet.Artifacts/
+/package/
+
+# Ignore pre compiled web interface
+docker/dist
+
+# Visual Studio
+.vs/
+
+# JetBrains Rider
+.idea/
+/.cursor
