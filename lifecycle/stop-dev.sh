@@ -16,9 +16,12 @@ pid=$(cat "$PID_FILE")
 if kill -0 "$pid" 2>/dev/null; then
     echo "Stopping MediaSkipDetector (PID $pid)..."
 
-    # On Windows/Git Bash, POSIX signals don't trigger .NET's graceful shutdown.
-    # Use taskkill without /F first (sends WM_CLOSE), which .NET handles properly.
-    if command -v taskkill &>/dev/null; then
+    # Prefer /quitquitquit for graceful shutdown (works reliably on all platforms).
+    # Fall back to OS-level signals if the HTTP endpoint isn't responding.
+    local port="${SKIPDETECT_PORT:-16004}"
+    if curl -sf -X POST "http://localhost:$port/quitquitquit" > /dev/null 2>&1; then
+        echo "Graceful shutdown requested via /quitquitquit"
+    elif command -v taskkill &>/dev/null; then
         taskkill //PID "$pid" > /dev/null 2>&1 || true
     else
         kill -INT "$pid" 2>/dev/null || true
