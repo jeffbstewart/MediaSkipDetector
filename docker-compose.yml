@@ -1,0 +1,48 @@
+services:
+  skipdetector:
+    image: ghcr.io/jeffbstewart/mediaskipdetector:latest
+    container_name: skipdetector
+    restart: unless-stopped
+
+    # ── User ID ──────────────────────────────────────────────────────
+    # Run as a non-root user. The UID:GID must have read/write access
+    # to the media volume (read source files, write .skip.json results).
+    #   Synology: SSH in and run `id -u <username>` / `id -g <username>`
+    #   Linux:    same commands, or use 1000:1000 for a typical first user
+    user: "1046:100"
+
+    # ── Networking ───────────────────────────────────────────────────
+    ports:
+      - "16004:16004"  # Monitoring: /health, /metrics, /status
+
+    # ── Volumes ──────────────────────────────────────────────────────
+    # media: your ripped media files. MUST BE READ/WRITE — the scanner
+    #        writes .skip.json result files alongside source MKVs.
+    volumes:
+      - /volume1/your-media-share:/media
+
+    # ── Environment ──────────────────────────────────────────────────
+    environment:
+      - MEDIA_ROOT=/media
+
+    # ── Health Check ─────────────────────────────────────────────────
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:16004/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+    # ── Graceful Shutdown ────────────────────────────────────────────
+    stop_grace_period: 30s
+
+  # ── Watchtower (optional) ────────────────────────────────────────
+  # Automatically pulls new :latest images and restarts the container.
+  # Remove this service if you prefer manual updates.
+  # watchtower:
+  #   image: containrrr/watchtower
+  #   container_name: watchtower
+  #   restart: unless-stopped
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   command: --interval 300 --cleanup skipdetector
