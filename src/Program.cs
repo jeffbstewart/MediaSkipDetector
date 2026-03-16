@@ -79,9 +79,15 @@ builder.Services.AddSingleton(appConfig);
 builder.Services.AddSingleton<IClock, SystemClock>();
 builder.Services.AddSingleton<ServerStatus>();
 builder.Services.AddSingleton<WorkQueue>();
-builder.Services.AddSingleton(sp => new DirectoryScanner(
-    mediaRoot,
-    sp.GetRequiredService<ILogger<DirectoryScanner>>()));
+builder.Services.AddSingleton(sp =>
+{
+    var dbInit = sp.GetRequiredService<DatabaseInitializer>();
+    var invalidateBefore = dbInit.GetMetadataDateTime("invalidate_skip_before");
+    return new DirectoryScanner(
+        mediaRoot,
+        invalidateBefore,
+        sp.GetRequiredService<ILogger<DirectoryScanner>>());
+});
 builder.Services.AddSingleton(sp => new DatabaseInitializer(
     appConfig.DataDir,
     sp.GetRequiredService<ILogger<DatabaseInitializer>>()));

@@ -110,8 +110,12 @@ Each file contains a JSON array of detected segments:
   {
     "start": 275.0,
     "end": 380.0,
-    "region_type": "INTRO",
-    "confidence": 0.95
+    "region_type": "INTRO"
+  },
+  {
+    "start": 2606.04,
+    "end": 2658.31,
+    "region_type": "END_CREDITS"
   }
 ]
 ```
@@ -162,6 +166,7 @@ services:
 
 - [.NET SDK 10.0+](https://dotnet.microsoft.com/download)
 - **fpcalc** (Chromaprint CLI) — required for audio fingerprinting
+- **ffmpeg** and **ffprobe** — required for credits detection (tail audio extraction and duration probing)
 
 #### Installing fpcalc on Windows
 
@@ -178,7 +183,21 @@ Verify it works:
 C:\fpcalc\fpcalc.exe -version
 ```
 
-In Docker, `fpcalc` is installed automatically via the Alpine `chromaprint-tools` package.
+#### Installing ffmpeg on Windows
+
+Install via [Chocolatey](https://chocolatey.org/):
+```bash
+choco install ffmpeg
+```
+
+Or download from https://ffmpeg.org/download.html and add to your PATH. Both `ffmpeg.exe` and `ffprobe.exe` must be available. If they're not on PATH, set the path in `secrets/.env`:
+```
+FFMPEG_PATH=C:\path\to\ffmpeg.exe
+```
+
+ffprobe is located automatically alongside ffmpeg. If ffmpeg is not available, intro detection still works but credits detection is skipped.
+
+In Docker, both `fpcalc` and `ffmpeg` are installed automatically via Alpine packages.
 
 ### Build and Run
 

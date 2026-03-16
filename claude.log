@@ -41,3 +41,34 @@
 - Files modified: src/Program.cs, src/Worker.cs, src/MediaSkipDetector.csproj,
   Dockerfile, docker-compose.yml, secrets/example.env
 ===
+
+=== 2026-03-15 22:00 — End credits detection ===
+- Added credits detection using reversed fingerprint analysis:
+  - Migration 004: fingerprint_type column on fingerprint_cache, PK now
+    (relative_path, fingerprint_type) supporting both INTRO and CREDITS
+  - Migration 005: metadata table with invalidate_skip_before timestamp —
+    forces reprocessing of all directories when credits support is added
+  - DirectoryScanner: treats .skip.json older than invalidate_skip_before as stale
+  - AppConfig: added FfmpegPath, CreditsFingerprintSeconds (300),
+    MinCreditsDuration (15), MaxCreditsDuration (300)
+  - FpcalcService.RunTail(): gets duration via ffprobe, extracts tail audio
+    via ffmpeg to temp WAV, fingerprints with fpcalc. Auto-detects
+    ffmpeg/ffprobe on PATH or via FFMPEG_PATH env var.
+  - IntroAnalysisService.AnalyzeCredits(): reverses fingerprints, runs pairwise
+    comparison (same algorithm as intros), converts reversed timestamps to
+    absolute positions, merges END_CREDITS into existing .skip.json files
+  - Worker runs credits as second pass after intro analysis. Gracefully
+    skipped when ffmpeg unavailable.
+  - ScanMetrics: added CreditsFingerprinted, CreditsFingerprintErrors,
+    CreditsDetected counters
+  - Status page: shows ffmpeg availability, credits fingerprinting stats,
+    credits detection counts in history table
+  - Dockerfile: added ffmpeg to apk add
+  - docs/TUNING.md: documented FFMPEG_PATH and credits tuning parameters
+  - README.md: documented ffmpeg as development prerequisite, updated
+    .skip.json example to show both INTRO and END_CREDITS entries
+- Verified on real library:
+  - Wheel of Time S02: credits in 8/8 episodes (6 comparisons)
+  - Xena S06: credits in 22/22 episodes (17 comparisons)
+  - invalidate_skip_before forced full reprocessing (108 dirs, 0 up to date)
+===

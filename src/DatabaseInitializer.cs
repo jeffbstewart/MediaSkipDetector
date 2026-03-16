@@ -50,6 +50,22 @@ public class DatabaseInitializer : IDisposable
         logger.LogInformation("Database opened: {DbPath}", DbPath);
     }
 
+    /// <summary>
+    /// Reads a DateTime value from the metadata table, or null if the key doesn't exist.
+    /// Used by DirectoryScanner to invalidate old .skip.json files after migrations.
+    /// </summary>
+    public DateTime? GetMetadataDateTime(string key)
+    {
+        using var cmd = Connection.CreateCommand();
+        cmd.CommandText = "SELECT value FROM metadata WHERE key = @key;";
+        cmd.Parameters.AddWithValue("@key", key);
+        var result = cmd.ExecuteScalar();
+        if (result is string s && DateTime.TryParse(s, null,
+                System.Globalization.DateTimeStyles.RoundtripKind, out var dt))
+            return dt;
+        return null;
+    }
+
     public void Dispose()
     {
         Connection.Dispose();

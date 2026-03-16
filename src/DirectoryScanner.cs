@@ -31,7 +31,7 @@ public record ScanResult(
 /// Discovers TV season directories on the NAS that contain episodes needing intro detection.
 /// A qualifying directory has 2+ files matching .*S\d+E\d+.*\.mkv (case-insensitive).
 /// </summary>
-public class DirectoryScanner(string mediaRoot, ILogger<DirectoryScanner> logger)
+public class DirectoryScanner(string mediaRoot, DateTime? invalidateSkipBefore, ILogger<DirectoryScanner> logger)
 {
     private static readonly Regex EpisodePattern =
         new(@"S\d+E\d+", RegexOptions.IgnoreCase | RegexOptions.Compiled);
@@ -84,7 +84,8 @@ public class DirectoryScanner(string mediaRoot, ILogger<DirectoryScanner> logger
                 .OrderByDescending(f => f.LastWriteTime)
                 .FirstOrDefault();
 
-            if (newestSkipFile != null && newestSkipFile.LastWriteTime >= newestTimestamp)
+            if (newestSkipFile != null && newestSkipFile.LastWriteTime >= newestTimestamp
+                && (invalidateSkipBefore == null || newestSkipFile.LastWriteTimeUtc >= invalidateSkipBefore))
             {
                 upToDate++;
                 continue;
