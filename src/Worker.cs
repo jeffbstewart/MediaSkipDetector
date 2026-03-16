@@ -172,9 +172,9 @@ public class Worker(
             if (result.EpisodesWithIntros > 0)
             {
                 logger.LogInformation(
-                    "Analysis complete for {Dir}: found intros in {Count} episodes ({Comparisons} comparisons) in {Elapsed}, wrote {Output}",
+                    "Analysis complete for {Dir}: found intros in {Count} episodes ({Comparisons} comparisons) in {Elapsed}",
                     candidate.Directory.Name, result.EpisodesWithIntros, result.TotalComparisons,
-                    sw.Elapsed, result.OutputFilePath);
+                    sw.Elapsed);
                 ScanMetrics.IntrosDetected.Inc(result.EpisodesWithIntros);
             }
             else

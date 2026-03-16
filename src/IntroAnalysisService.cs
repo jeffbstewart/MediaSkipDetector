@@ -9,7 +9,7 @@ namespace MediaSkipDetector;
 /// <summary>
 /// Result of analyzing a bundle's fingerprints for intro segments.
 /// </summary>
-public record AnalysisResult(int EpisodesWithIntros, int TotalComparisons, string? OutputFilePath);
+public record AnalysisResult(int EpisodesWithIntros, int TotalComparisons, string? OutputDirectory);
 
 /// <summary>
 /// Compares fingerprints across episodes in a directory to find shared intro sequences,
@@ -159,10 +159,13 @@ public class IntroAnalysisService : IIntroAnalysisService
         var now = _clock.Now.ToString("O");
         WriteSkipSegments(introSegments, now);
 
-        // Step 4: Write .skip.json file
-        var outputPath = WriteSkipJson(candidate, introSegments, episodes);
+        // Step 4: Clean up any bad combined skip.json files (multiple episodes in one file)
+        CleanupCombinedSkipFiles(candidate.Directory);
 
-        return new AnalysisResult(introSegments.Count, totalComparisons, outputPath);
+        // Step 5: Write per-episode .skip.json files
+        WriteSkipJson(candidate, introSegments, episodes);
+
+        return new AnalysisResult(introSegments.Count, totalComparisons, candidate.Directory.FullName);
     }
 
     private void WriteSkipSegments(Dictionary<string, (double Start, double End)> segments, string now)
@@ -196,38 +199,94 @@ public class IntroAnalysisService : IIntroAnalysisService
         transaction.Commit();
     }
 
-    private string WriteSkipJson(
+    /// <summary>
+    /// Writes one .introskip.skip.json file per episode alongside the source MKV.
+    /// Episodes with a detected intro get [{start, end, region_type}].
+    /// Episodes with no match get [] (empty array) as a marker that analysis ran.
+    /// </summary>
+    private void WriteSkipJson(
         ScanCandidate candidate,
         Dictionary<string, (double Start, double End)> segments,
         List<(string FileName, string RelativePath, uint[] Fingerprint, double Duration)> episodes)
     {
-        // Build per-episode JSON entries
-        var entries = new List<object>();
-
-        foreach (var episode in episodes)
-        {
-            if (!segments.TryGetValue(episode.RelativePath, out var intro))
-                continue;
-
-            entries.Add(new
-            {
-                file = episode.FileName,
-                start = Math.Round(intro.Start, 2),
-                end = Math.Round(intro.End, 2),
-                region_type = "INTRO"
-            });
-        }
-
-        var json = JsonSerializer.Serialize(entries, new JsonSerializerOptions
+        var jsonOptions = new JsonSerializerOptions
         {
             WriteIndented = true,
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower
-        });
+        };
 
-        var outputPath = Path.Combine(candidate.Directory.FullName, candidate.OutputFileName);
-        File.WriteAllText(outputPath, json);
+        foreach (var episode in episodes)
+        {
+            var baseName = Path.GetFileNameWithoutExtension(episode.FileName);
+            var outputPath = Path.Combine(candidate.Directory.FullName, $"{baseName}.introskip.skip.json");
 
-        return outputPath;
+            if (segments.TryGetValue(episode.RelativePath, out var intro))
+            {
+                var entries = new[]
+                {
+                    new
+                    {
+                        start = Math.Round(intro.Start, 2),
+                        end = Math.Round(intro.End, 2),
+                        region_type = "INTRO"
+                    }
+                };
+                File.WriteAllText(outputPath, JsonSerializer.Serialize(entries, jsonOptions));
+            }
+            else
+            {
+                File.WriteAllText(outputPath, "[]");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Deletes any *.introskip.skip.json files that contain segments for more than one
+    /// distinct episode (the "file" field). These are leftover from a bug that wrote
+    /// all episodes' data into a single combined file.
+    /// </summary>
+    private void CleanupCombinedSkipFiles(DirectoryInfo directory)
+    {
+        try
+        {
+            var skipFiles = directory.GetFiles("*.introskip.skip.json");
+            foreach (var file in skipFiles)
+            {
+                try
+                {
+                    var text = File.ReadAllText(file.FullName);
+                    using var doc = JsonDocument.Parse(text);
+                    if (doc.RootElement.ValueKind != JsonValueKind.Array)
+                        continue;
+
+                    var distinctFiles = new HashSet<string>();
+                    foreach (var element in doc.RootElement.EnumerateArray())
+                    {
+                        if (element.TryGetProperty("file", out var fileProp) &&
+                            fileProp.ValueKind == JsonValueKind.String)
+                        {
+                            distinctFiles.Add(fileProp.GetString()!);
+                        }
+                    }
+
+                    if (distinctFiles.Count > 1)
+                    {
+                        file.Delete();
+                        _logger.LogInformation("Deleted combined skip file: {File} ({Count} episodes mixed)",
+                            file.Name, distinctFiles.Count);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Failed to check skip file {File}: {Error}", file.Name, ex.Message);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning("Failed to scan for combined skip files in {Dir}: {Error}",
+                directory.Name, ex.Message);
+        }
     }
 
     /// <summary>

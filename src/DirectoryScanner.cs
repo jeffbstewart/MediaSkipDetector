@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace MediaSkipDetector;
@@ -6,12 +7,10 @@ namespace MediaSkipDetector;
 /// A TV season directory that needs intro detection processing.
 /// </summary>
 /// <param name="Directory">The directory containing the MKV episodes.</param>
-/// <param name="OutputFileName">The output filename (name only, no path): {first_mkv_basename}.introskip.skip.json</param>
 /// <param name="MkvFileNames">Bare filenames of qualifying MKVs (no directory prefix).</param>
 /// <param name="NewestMkvTimestamp">Timestamp of the most recently modified MKV in this directory.</param>
 public record ScanCandidate(
     DirectoryInfo Directory,
-    string OutputFileName,
     List<string> MkvFileNames,
     DateTime NewestMkvTimestamp
 );
@@ -67,10 +66,25 @@ public class DirectoryScanner(string mediaRoot, ILogger<DirectoryScanner> logger
 
             var newestTimestamp = mkvFiles.Max(f => f.LastWriteTime);
             var sortedNames = mkvFiles.OrderBy(f => f.Name).ToList();
-            var outputFileName = Path.GetFileNameWithoutExtension(sortedNames[0].Name) + ".introskip.skip.json";
-            var outputFile = new FileInfo(Path.Combine(dir.FullName, outputFileName));
 
-            if (outputFile.Exists && outputFile.LastWriteTime >= newestTimestamp)
+            // Up-to-date if any *.introskip.skip.json exists and is newer than the newest MKV.
+            // But first, delete any combined files (multiple distinct "file" values) —
+            // these are leftover from a bug and must not count as up-to-date.
+            var skipFiles = dir.GetFiles("*.introskip.skip.json");
+            foreach (var sf in skipFiles)
+            {
+                if (IsCombinedSkipFile(sf))
+                {
+                    logger.LogInformation("Deleting combined skip file: {File}", sf.FullName);
+                    sf.Delete();
+                }
+            }
+
+            var newestSkipFile = dir.GetFiles("*.introskip.skip.json")
+                .OrderByDescending(f => f.LastWriteTime)
+                .FirstOrDefault();
+
+            if (newestSkipFile != null && newestSkipFile.LastWriteTime >= newestTimestamp)
             {
                 upToDate++;
                 continue;
@@ -78,7 +92,6 @@ public class DirectoryScanner(string mediaRoot, ILogger<DirectoryScanner> logger
 
             var candidate = new ScanCandidate(
                 dir,
-                outputFileName,
                 sortedNames.Select(f => f.Name).ToList(),
                 newestTimestamp
             );
@@ -131,6 +144,36 @@ public class DirectoryScanner(string mediaRoot, ILogger<DirectoryScanner> logger
 
             foreach (var descendant in EnumerateDirectoriesSafe(child))
                 yield return descendant;
+        }
+    }
+
+    /// <summary>
+    /// Returns true if a skip.json file contains segments for multiple distinct episodes
+    /// (the "file" field). These are leftover from a bug that combined all episodes into one file.
+    /// </summary>
+    private static bool IsCombinedSkipFile(FileInfo file)
+    {
+        try
+        {
+            var text = File.ReadAllText(file.FullName);
+            using var doc = JsonDocument.Parse(text);
+            if (doc.RootElement.ValueKind != JsonValueKind.Array) return false;
+
+            var distinctFiles = new HashSet<string>();
+            foreach (var element in doc.RootElement.EnumerateArray())
+            {
+                if (element.TryGetProperty("file", out var fileProp) &&
+                    fileProp.ValueKind == JsonValueKind.String)
+                {
+                    distinctFiles.Add(fileProp.GetString()!);
+                }
+            }
+
+            return distinctFiles.Count > 1;
+        }
+        catch
+        {
+            return false;
         }
     }
 }
