@@ -12,6 +12,7 @@ Set via environment variables (in `secrets/.env` for local dev, or in
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `FPCALC_PATH` | _(auto-detect)_ | Path to fpcalc binary. Auto-detected on PATH if not set. In Docker, installed via `apk add chromaprint`. |
+| `FFMPEG_PATH` | _(auto-detect)_ | Path to ffmpeg binary. Needed for credits detection (tail audio extraction). Auto-detected on PATH if not set. In Docker, installed via `apk add ffmpeg`. ffprobe is located automatically as a sibling of ffmpeg. |
 | `FINGERPRINT_LENGTH_SECONDS` | `600` | Seconds of audio to fingerprint per episode (default 10 minutes, matching Jellyfin's `AnalysisLengthLimit`). Each fingerprint point covers ~0.12s, so 600s produces ~4800 points. Reducing to 120 saves CPU/cache but misses intros that start after 2 minutes. |
 
 ## Comparison Strategy
@@ -36,6 +37,25 @@ well-tested by the Jellyfin community across thousands of libraries.
 | `INVERTED_INDEX_SHIFT` | `2` | Fuzzy matching tolerance when searching the inverted index. For each fingerprint point, also checks `point ± shift` values. Higher = more candidate shifts explored, better recall but slower. |
 | `MIN_INTRO_DURATION` | `15` | Minimum length (seconds) for a detected segment to be considered a valid intro. Shorter matches are discarded as noise. |
 | `MAX_INTRO_DURATION` | `120` | Maximum length (seconds) for a detected segment. Longer matches are discarded (likely a false positive from ambient audio). |
+
+## Credits Detection
+
+Credits detection uses the same Chromaprint algorithm but applied to the tail end
+of each episode. It works by extracting the last N seconds of audio via ffmpeg,
+fingerprinting it, reversing the fingerprint array, and running the same pairwise
+comparison. Detected timestamps are then converted back to absolute positions.
+
+Requires ffmpeg (for tail audio extraction) and ffprobe (for duration detection).
+If ffmpeg is not available, credits detection is silently skipped.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `CREDITS_FINGERPRINT_SECONDS` | `300` | Seconds of tail audio to fingerprint per episode (default 5 minutes). For most TV episodes (22-44 min), 300s covers the entire credits sequence plus some preceding content. Increase for very long episodes. |
+| `MIN_CREDITS_DURATION` | `15` | Minimum length (seconds) for a detected segment to be considered valid credits. |
+| `MAX_CREDITS_DURATION` | `300` | Maximum length (seconds) for a detected credits segment. Credits sequences are typically 30s-3min. |
+
+The Chromaprint matching parameters (`MAX_FINGERPRINT_POINT_DIFFERENCES`,
+`MAX_TIME_SKIP`, etc.) are shared between intro and credits detection.
 
 ## When to Adjust
 

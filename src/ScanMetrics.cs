@@ -43,6 +43,15 @@ public static class ScanMetrics
     public static readonly Counter IntrosDetected =
         Metrics.CreateCounter("skipdetect_intros_detected_total", "Intro segments detected since startup");
 
+    public static readonly Counter CreditsFingerprinted =
+        Metrics.CreateCounter("skipdetect_credits_fingerprinted_total", "Files credits-fingerprinted since startup");
+
+    public static readonly Counter CreditsFingerprintErrors =
+        Metrics.CreateCounter("skipdetect_credits_fingerprint_errors_total", "Credits fingerprinting errors since startup");
+
+    public static readonly Counter CreditsDetected =
+        Metrics.CreateCounter("skipdetect_credits_detected_total", "Credits segments detected since startup");
+
     public static readonly Counter AnalysisErrors =
         Metrics.CreateCounter("skipdetect_analysis_errors_total", "Analysis errors since startup");
 }

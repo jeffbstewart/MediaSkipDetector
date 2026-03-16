@@ -52,6 +52,15 @@ static int EnvInt(string name, int fallback) =>
 static double EnvDouble(string name, double fallback) =>
     double.TryParse(Environment.GetEnvironmentVariable(name), out var v) ? v : fallback;
 
+// FFMPEG_PATH: environment variable or CLI arg
+string? ffmpegPath = null;
+foreach (var arg in args)
+{
+    if (arg.StartsWith("--ffmpeg-path="))
+        ffmpegPath = arg["--ffmpeg-path=".Length..];
+}
+ffmpegPath = Environment.GetEnvironmentVariable("FFMPEG_PATH") ?? ffmpegPath;
+
 var appConfig = new AppConfig(mediaRoot, dataDir, fpcalcPath)
 {
     MaxFingerprintPointDifferences = EnvInt("MAX_FINGERPRINT_POINT_DIFFERENCES", 6),
@@ -61,6 +70,10 @@ var appConfig = new AppConfig(mediaRoot, dataDir, fpcalcPath)
     MaxIntroDuration = EnvInt("MAX_INTRO_DURATION", 120),
     MaxComparisonCandidates = EnvInt("MAX_COMPARISON_CANDIDATES", 7),
     FingerprintLengthSeconds = EnvInt("FINGERPRINT_LENGTH_SECONDS", 600),
+    FfmpegPath = ffmpegPath,
+    CreditsFingerprintSeconds = EnvInt("CREDITS_FINGERPRINT_SECONDS", 300),
+    MinCreditsDuration = EnvInt("MIN_CREDITS_DURATION", 15),
+    MaxCreditsDuration = EnvInt("MAX_CREDITS_DURATION", 300),
 };
 builder.Services.AddSingleton(appConfig);
 builder.Services.AddSingleton<IClock, SystemClock>();

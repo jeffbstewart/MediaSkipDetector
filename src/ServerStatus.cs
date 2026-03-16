@@ -9,13 +9,14 @@ public enum ScanState
 }
 
 /// <summary>
-/// One entry in the recent intro detection history.
+/// One entry in the recent intro/credits detection history.
 /// </summary>
 public record AnalysisHistoryEntry(
     DateTime Timestamp,
     string DirectoryName,
     int EpisodeCount,
     int IntrosFound,
+    int CreditsFound,
     int Comparisons,
     TimeSpan Elapsed,
     string? Error);
@@ -49,6 +50,22 @@ public class ServerStatus
             _analysisHistory.AddFirst(entry);
             while (_analysisHistory.Count > MaxHistoryEntries)
                 _analysisHistory.RemoveLast();
+        }
+    }
+
+    /// <summary>
+    /// Updates the most recent history entry with credits detection results.
+    /// Called after credits analysis completes (which runs immediately after intro analysis).
+    /// </summary>
+    public void UpdateLatestCredits(int creditsFound)
+    {
+        lock (_historyLock)
+        {
+            if (_analysisHistory.First?.Value is { } latest)
+            {
+                _analysisHistory.RemoveFirst();
+                _analysisHistory.AddFirst(latest with { CreditsFound = creditsFound });
+            }
         }
     }
 

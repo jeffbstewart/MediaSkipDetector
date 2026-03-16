@@ -25,4 +25,18 @@ public record AppConfig(string MediaRoot, string DataDir, string? FpcalcPath)
 
     /// <summary>Seconds of audio to fingerprint per file.</summary>
     public int FingerprintLengthSeconds { get; init; } = 600;
+
+    // ── Credits detection parameters ──
+
+    /// <summary>Path to ffmpeg binary (needed for tail audio extraction). Auto-detected if null.</summary>
+    public string? FfmpegPath { get; init; }
+
+    /// <summary>Seconds of tail audio to fingerprint for credits detection.</summary>
+    public int CreditsFingerprintSeconds { get; init; } = 300;
+
+    /// <summary>Shortest valid credits segment (seconds).</summary>
+    public int MinCreditsDuration { get; init; } = 15;
+
+    /// <summary>Longest valid credits segment (seconds).</summary>
+    public int MaxCreditsDuration { get; init; } = 300;
 }

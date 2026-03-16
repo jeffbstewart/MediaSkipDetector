@@ -7,12 +7,12 @@ using Microsoft.Data.Sqlite;
 namespace MediaSkipDetector;
 
 /// <summary>
-/// Result of analyzing a bundle's fingerprints for intro segments.
+/// Result of analyzing a bundle's fingerprints for intro or credits segments.
 /// </summary>
-public record AnalysisResult(int EpisodesWithIntros, int TotalComparisons, string? OutputDirectory);
+public record AnalysisResult(int EpisodesWithIntros, int EpisodesWithCredits, int TotalComparisons, string? OutputDirectory);
 
 /// <summary>
-/// Compares fingerprints across episodes in a directory to find shared intro sequences,
+/// Compares fingerprints across episodes in a directory to find shared intro and credits sequences,
 /// using the vendored intro-skipper ChromaprintAnalyzer algorithm.
 /// </summary>
 public interface IIntroAnalysisService
@@ -22,6 +22,12 @@ public interface IIntroAnalysisService
     /// Writes results to skip_segment table and outputs a .skip.json file.
     /// </summary>
     AnalysisResult AnalyzeBundle(ScanCandidate candidate);
+
+    /// <summary>
+    /// Analyzes credits fingerprints in a bundle. Reverses fingerprints, compares pairwise,
+    /// converts timestamps back. Merges END_CREDITS entries into existing .skip.json files.
+    /// </summary>
+    AnalysisResult AnalyzeCredits(ScanCandidate candidate);
 }
 
 public class IntroAnalysisService : IIntroAnalysisService
@@ -67,6 +73,112 @@ public class IntroAnalysisService : IIntroAnalysisService
         var directoryPath = candidate.Directory.FullName;
 
         // Step 1: Load fingerprints from cache for all MKVs
+        var episodes = LoadEpisodeFingerprints(candidate, "INTRO");
+
+        if (episodes.Count < 2)
+        {
+            _logger.LogInformation("Only {Count} fingerprinted episodes in {Dir}, need at least 2 for comparison",
+                episodes.Count, candidate.Directory.Name);
+            return new AnalysisResult(0, 0, 0, null);
+        }
+
+        // Step 2: Compare episodes using ChromaprintAnalyzer.
+        var introSegments = new Dictionary<string, (double Start, double End)>();
+        var totalComparisons = CompareEpisodes(episodes, introSegments,
+            _appConfig.MinIntroDuration, _appConfig.MaxIntroDuration);
+
+        _logger.LogInformation("Compared {Comparisons} pairs, found intros in {Count}/{Total} episodes",
+            totalComparisons, introSegments.Count, episodes.Count);
+
+        if (introSegments.Count == 0)
+            return new AnalysisResult(0, 0, totalComparisons, null);
+
+        // Step 3: Write to skip_segment table
+        var now = _clock.Now.ToString("O");
+        WriteSkipSegments(introSegments, "INTRO", now);
+
+        // Step 4: Clean up any bad combined skip.json files (multiple episodes in one file)
+        CleanupCombinedSkipFiles(candidate.Directory);
+
+        // Step 5: Write per-episode .skip.json files
+        WriteIntroSkipJson(candidate, introSegments, episodes);
+
+        return new AnalysisResult(introSegments.Count, 0, totalComparisons, candidate.Directory.FullName);
+    }
+
+    public AnalysisResult AnalyzeCredits(ScanCandidate candidate)
+    {
+        // Step 1: Load credits fingerprints from cache
+        var episodes = LoadEpisodeFingerprints(candidate, "CREDITS");
+
+        if (episodes.Count < 2)
+        {
+            _logger.LogInformation("Only {Count} credits-fingerprinted episodes in {Dir}, need at least 2",
+                episodes.Count, candidate.Directory.Name);
+            return new AnalysisResult(0, 0, 0, null);
+        }
+
+        // Step 2: Reverse each fingerprint (credits algorithm: find common audio at the end)
+        var reversedEpisodes = episodes.Select(e =>
+        {
+            var reversed = (uint[])e.Fingerprint.Clone();
+            Array.Reverse(reversed);
+            return (e.FileName, e.RelativePath, Fingerprint: reversed, e.Duration);
+        }).ToList();
+
+        // Step 3: Temporarily configure min duration for credits
+        var config = IntroSkipper.Plugin.Instance!.Configuration;
+        var savedMinDuration = config.MinimumIntroDuration;
+        config.MinimumIntroDuration = _appConfig.MinCreditsDuration;
+
+        Dictionary<string, (double Start, double End)> creditsSegments;
+        int totalComparisons;
+        try
+        {
+            creditsSegments = new Dictionary<string, (double Start, double End)>();
+            totalComparisons = CompareEpisodes(reversedEpisodes, creditsSegments,
+                _appConfig.MinCreditsDuration, _appConfig.MaxCreditsDuration);
+        }
+        finally
+        {
+            config.MinimumIntroDuration = savedMinDuration;
+        }
+
+        // Step 4: Convert reversed timestamps to absolute positions
+        // For reversed fingerprints: start = episodeDuration - matchEnd, end = episodeDuration - matchStart
+        var durationLookup = episodes.ToDictionary(e => e.RelativePath, e => e.Duration);
+        var absoluteCredits = new Dictionary<string, (double Start, double End)>();
+
+        foreach (var (relativePath, (matchStart, matchEnd)) in creditsSegments)
+        {
+            var episodeDuration = durationLookup[relativePath];
+            var absoluteStart = episodeDuration - matchEnd;
+            var absoluteEnd = episodeDuration - matchStart;
+            absoluteCredits[relativePath] = (absoluteStart, absoluteEnd);
+        }
+
+        _logger.LogInformation("Credits: compared {Comparisons} pairs, found credits in {Count}/{Total} episodes",
+            totalComparisons, absoluteCredits.Count, episodes.Count);
+
+        if (absoluteCredits.Count == 0)
+            return new AnalysisResult(0, 0, totalComparisons, null);
+
+        // Step 5: Write to skip_segment table
+        var now = _clock.Now.ToString("O");
+        WriteSkipSegments(absoluteCredits, "END_CREDITS", now);
+
+        // Step 6: Merge credits into existing .skip.json files
+        WriteCreditsToSkipJson(candidate, absoluteCredits, episodes);
+
+        return new AnalysisResult(0, absoluteCredits.Count, totalComparisons, candidate.Directory.FullName);
+    }
+
+    // ── Shared helpers ─────────────────────────────────────────────────
+
+    private List<(string FileName, string RelativePath, uint[] Fingerprint, double Duration)>
+        LoadEpisodeFingerprints(ScanCandidate candidate, string fingerprintType)
+    {
+        var directoryPath = candidate.Directory.FullName;
         var episodes = new List<(string FileName, string RelativePath, uint[] Fingerprint, double Duration)>();
 
         foreach (var fileName in candidate.MkvFileNames)
@@ -85,31 +197,30 @@ public class IntroAnalysisService : IIntroAnalysisService
                 continue;
             }
 
-            var cached = _fingerprintCache.Get(relativePath, fileInfo.Length, fileInfo.LastWriteTimeUtc);
+            var cached = _fingerprintCache.Get(relativePath, fileInfo.Length, fileInfo.LastWriteTimeUtc, fingerprintType);
             if (cached == null)
             {
-                _logger.LogWarning("No cached fingerprint for {File}, skipping", fileName);
+                _logger.LogDebug("No cached {Type} fingerprint for {File}, skipping", fingerprintType, fileName);
                 continue;
             }
 
             episodes.Add((fileName, relativePath, cached.Fingerprint, cached.DurationSeconds));
         }
 
-        if (episodes.Count < 2)
-        {
-            _logger.LogInformation("Only {Count} fingerprinted episodes in {Dir}, need at least 2 for comparison",
-                episodes.Count, candidate.Directory.Name);
-            return new AnalysisResult(0, 0, null);
-        }
+        return episodes;
+    }
 
-        // Step 2: Compare episodes using ChromaprintAnalyzer.
-        // For each episode, pick up to MaxComparisonCandidates other episodes to compare
-        // against, spread across the season via hashing (not just nearest neighbors).
-        // Stop comparing an episode once a valid match is found.
+    /// <summary>
+    /// Runs pairwise comparison using ChromaprintAnalyzer, populating the segments dictionary.
+    /// Returns total number of comparisons performed.
+    /// </summary>
+    private int CompareEpisodes(
+        List<(string FileName, string RelativePath, uint[] Fingerprint, double Duration)> episodes,
+        Dictionary<string, (double Start, double End)> segments,
+        int minDuration, int maxDuration)
+    {
         var maxCandidates = _appConfig.MaxComparisonCandidates;
-
         var analyzer = new ChromaprintAnalyzer(_loggerFactory.CreateLogger<ChromaprintAnalyzer>());
-        var introSegments = new Dictionary<string, (double Start, double End)>();
         var totalComparisons = 0;
 
         // Assign stable GUIDs based on relative path (for analyzer's inverted index cache)
@@ -119,8 +230,8 @@ public class IntroAnalysisService : IIntroAnalysisService
 
         for (var i = 0; i < episodes.Count; i++)
         {
-            // Skip if this episode already has a detected intro (from being the rhs of a prior match)
-            if (introSegments.ContainsKey(episodes[i].RelativePath))
+            // Skip if this episode already has a detected segment (from being the rhs of a prior match)
+            if (segments.ContainsKey(episodes[i].RelativePath))
                 continue;
 
             // Build candidate list: hash (thisFile, otherFile) to spread picks across the season
@@ -139,57 +250,48 @@ public class IntroAnalysisService : IIntroAnalysisService
                 if (!lhsSegment.Valid)
                     continue;
 
-                // Valid match — record both sides
-                introSegments[lhs.RelativePath] = (lhsSegment.Start, lhsSegment.End);
+                // Filter by max duration (min is checked inside the vendored code)
+                if (lhsSegment.Duration > maxDuration)
+                    continue;
 
-                if (rhsSegment.Valid)
-                    introSegments.TryAdd(rhs.RelativePath, (rhsSegment.Start, rhsSegment.End));
+                // Valid match — record both sides
+                segments[lhs.RelativePath] = (lhsSegment.Start, lhsSegment.End);
+
+                if (rhsSegment.Valid && rhsSegment.Duration <= maxDuration)
+                    segments.TryAdd(rhs.RelativePath, (rhsSegment.Start, rhsSegment.End));
 
                 break; // First valid match is sufficient for this episode
             }
         }
 
-        _logger.LogInformation("Compared {Comparisons} pairs, found intros in {Count}/{Total} episodes",
-            totalComparisons, introSegments.Count, episodes.Count);
-
-        if (introSegments.Count == 0)
-            return new AnalysisResult(0, totalComparisons, null);
-
-        // Step 3: Write to skip_segment table
-        var now = _clock.Now.ToString("O");
-        WriteSkipSegments(introSegments, now);
-
-        // Step 4: Clean up any bad combined skip.json files (multiple episodes in one file)
-        CleanupCombinedSkipFiles(candidate.Directory);
-
-        // Step 5: Write per-episode .skip.json files
-        WriteSkipJson(candidate, introSegments, episodes);
-
-        return new AnalysisResult(introSegments.Count, totalComparisons, candidate.Directory.FullName);
+        return totalComparisons;
     }
 
-    private void WriteSkipSegments(Dictionary<string, (double Start, double End)> segments, string now)
+    private void WriteSkipSegments(Dictionary<string, (double Start, double End)> segments,
+        string regionType, string now)
     {
         using var transaction = _connection.BeginTransaction();
 
         foreach (var (relativePath, (start, end)) in segments)
         {
-            // Delete existing intro segments for this episode
+            // Delete existing segments of this type for this episode
             using var deleteCmd = _connection.CreateCommand();
             deleteCmd.CommandText = """
                 DELETE FROM skip_segment
-                WHERE episode_path = @path AND region_type = 'INTRO';
+                WHERE episode_path = @path AND region_type = @type;
                 """;
             deleteCmd.Parameters.AddWithValue("@path", relativePath);
+            deleteCmd.Parameters.AddWithValue("@type", regionType);
             deleteCmd.ExecuteNonQuery();
 
             // Insert new segment
             using var insertCmd = _connection.CreateCommand();
             insertCmd.CommandText = """
                 INSERT INTO skip_segment (episode_path, region_type, start_seconds, end_seconds, confidence, computed_at)
-                VALUES (@path, 'INTRO', @start, @end, NULL, @now);
+                VALUES (@path, @type, @start, @end, NULL, @now);
                 """;
             insertCmd.Parameters.AddWithValue("@path", relativePath);
+            insertCmd.Parameters.AddWithValue("@type", regionType);
             insertCmd.Parameters.AddWithValue("@start", start);
             insertCmd.Parameters.AddWithValue("@end", end);
             insertCmd.Parameters.AddWithValue("@now", now);
@@ -204,7 +306,7 @@ public class IntroAnalysisService : IIntroAnalysisService
     /// Episodes with a detected intro get [{start, end, region_type}].
     /// Episodes with no match get [] (empty array) as a marker that analysis ran.
     /// </summary>
-    private void WriteSkipJson(
+    private void WriteIntroSkipJson(
         ScanCandidate candidate,
         Dictionary<string, (double Start, double End)> segments,
         List<(string FileName, string RelativePath, uint[] Fingerprint, double Duration)> episodes)
@@ -237,6 +339,67 @@ public class IntroAnalysisService : IIntroAnalysisService
             {
                 File.WriteAllText(outputPath, "[]");
             }
+        }
+    }
+
+    /// <summary>
+    /// Merges END_CREDITS entries into existing .introskip.skip.json files.
+    /// Reads existing entries, removes any END_CREDITS entries, appends the new one.
+    /// </summary>
+    private void WriteCreditsToSkipJson(
+        ScanCandidate candidate,
+        Dictionary<string, (double Start, double End)> creditsSegments,
+        List<(string FileName, string RelativePath, uint[] Fingerprint, double Duration)> episodes)
+    {
+        var jsonOptions = new JsonSerializerOptions { WriteIndented = true };
+
+        foreach (var episode in episodes)
+        {
+            if (!creditsSegments.TryGetValue(episode.RelativePath, out var credits))
+                continue;
+
+            var baseName = Path.GetFileNameWithoutExtension(episode.FileName);
+            var outputPath = Path.Combine(candidate.Directory.FullName, $"{baseName}.introskip.skip.json");
+
+            // Read existing entries (from intro analysis), keeping non-END_CREDITS entries
+            var entries = new List<object>();
+            if (File.Exists(outputPath))
+            {
+                try
+                {
+                    var text = File.ReadAllText(outputPath);
+                    using var doc = JsonDocument.Parse(text);
+                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var element in doc.RootElement.EnumerateArray())
+                        {
+                            // Keep entries that are NOT END_CREDITS
+                            var regionType = element.TryGetProperty("region_type", out var rt)
+                                ? rt.GetString() : null;
+                            if (string.Equals(regionType, "END_CREDITS", StringComparison.OrdinalIgnoreCase))
+                                continue;
+
+                            // Preserve the original entry as-is
+                            entries.Add(JsonSerializer.Deserialize<JsonElement>(element.GetRawText()));
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning("Failed to parse existing skip.json for {File}: {Error}",
+                        episode.FileName, ex.Message);
+                }
+            }
+
+            // Add new credits entry
+            entries.Add(new
+            {
+                start = Math.Round(credits.Start, 2),
+                end = Math.Round(credits.End, 2),
+                region_type = "END_CREDITS"
+            });
+
+            File.WriteAllText(outputPath, JsonSerializer.Serialize(entries, jsonOptions));
         }
     }
 
@@ -291,10 +454,7 @@ public class IntroAnalysisService : IIntroAnalysisService
 
     /// <summary>
     /// Selects up to maxCandidates other episodes to compare against, spread across the
-    /// season via hashing. For episode i, we hash (fileName_i, fileName_j) for each j != i,
-    /// sort by hash, and take the first maxCandidates indices. This gives each episode a
-    /// deterministic but well-distributed set of comparison partners rather than always
-    /// comparing nearest neighbors.
+    /// season via hashing.
     /// </summary>
     private static List<int> GetComparisonCandidates(
         List<(string FileName, string RelativePath, uint[] Fingerprint, double Duration)> episodes,
@@ -332,4 +492,5 @@ public class IntroAnalysisService : IIntroAnalysisService
             System.Text.Encoding.UTF8.GetBytes(path));
         return new Guid(bytes);
     }
+
 }

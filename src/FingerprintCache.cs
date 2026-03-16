@@ -16,13 +16,14 @@ public interface IFingerprintCache
     /// Retrieves a cached fingerprint if it exists and is fresh (file size and modification time match).
     /// Returns null if not cached or stale.
     /// </summary>
-    CachedFingerprint? Get(string relativePath, long fileSize, DateTime lastModifiedUtc);
+    CachedFingerprint? Get(string relativePath, long fileSize, DateTime lastModifiedUtc,
+        string fingerprintType = "INTRO");
 
     /// <summary>
     /// Stores or replaces a fingerprint in the cache.
     /// </summary>
     void Put(string relativePath, long fileSize, DateTime lastModifiedUtc,
-        uint[] fingerprint, double durationSeconds);
+        uint[] fingerprint, double durationSeconds, string fingerprintType = "INTRO");
 
     /// <summary>
     /// Removes entries whose relative paths no longer exist on disk.
@@ -48,15 +49,17 @@ public class FingerprintCache : IFingerprintCache
         _logger.LogInformation("Fingerprint cache ready ({Count} entries)", Count);
     }
 
-    public CachedFingerprint? Get(string relativePath, long fileSize, DateTime lastModifiedUtc)
+    public CachedFingerprint? Get(string relativePath, long fileSize, DateTime lastModifiedUtc,
+        string fingerprintType = "INTRO")
     {
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = """
             SELECT file_size, last_modified, fingerprint, duration_seconds
             FROM fingerprint_cache
-            WHERE relative_path = @path;
+            WHERE relative_path = @path AND fingerprint_type = @type;
             """;
         cmd.Parameters.AddWithValue("@path", relativePath);
+        cmd.Parameters.AddWithValue("@type", fingerprintType);
 
         using var reader = cmd.ExecuteReader();
         if (!reader.Read())
@@ -78,16 +81,17 @@ public class FingerprintCache : IFingerprintCache
     }
 
     public void Put(string relativePath, long fileSize, DateTime lastModifiedUtc,
-        uint[] fingerprint, double durationSeconds)
+        uint[] fingerprint, double durationSeconds, string fingerprintType = "INTRO")
     {
         using var cmd = _connection.CreateCommand();
         cmd.CommandText = """
             INSERT OR REPLACE INTO fingerprint_cache
-                (relative_path, file_size, last_modified, fingerprint, duration_seconds)
+                (relative_path, fingerprint_type, file_size, last_modified, fingerprint, duration_seconds)
             VALUES
-                (@path, @size, @modified, @fingerprint, @duration);
+                (@path, @type, @size, @modified, @fingerprint, @duration);
             """;
         cmd.Parameters.AddWithValue("@path", relativePath);
+        cmd.Parameters.AddWithValue("@type", fingerprintType);
         cmd.Parameters.AddWithValue("@size", fileSize);
         cmd.Parameters.AddWithValue("@modified", lastModifiedUtc.ToString("O"));
         cmd.Parameters.AddWithValue("@fingerprint", UintArrayToBlob(fingerprint));
@@ -101,7 +105,7 @@ public class FingerprintCache : IFingerprintCache
         var pathsToDelete = new List<string>();
         using (var cmd = _connection.CreateCommand())
         {
-            cmd.CommandText = "SELECT relative_path FROM fingerprint_cache;";
+            cmd.CommandText = "SELECT DISTINCT relative_path FROM fingerprint_cache;";
             using var reader = cmd.ExecuteReader();
             while (reader.Read())
             {
