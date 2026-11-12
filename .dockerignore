@@ -1,0 +1,10 @@
+.git
+.github
+.claude
+.idea
+data
+secrets
+lifecycle
+docs
+*.md
+claude.log

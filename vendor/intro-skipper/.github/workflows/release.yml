@@ -1,0 +1,132 @@
+name: "Release Plugin"
+
+on:
+  workflow_dispatch:
+    inputs:
+      skip_signing:
+        description: 'Skip SignPath signing (produce unsigned artifact)'
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Validate skip_signing permission
+        if: ${{ inputs.skip_signing && github.actor != 'jumoog' }}
+        run: |
+          echo "ERROR: skip_signing can only be used by GITHUB_ACTOR=jumoog."
+          exit 1
+
+      - name: Read build configuration
+        id: read-config
+        run: |
+          CONFIG=$(cat build.json)
+          echo "MAIN_VERSION=$(echo "$CONFIG" | jq -r '.version')" >> $GITHUB_ENV
+          echo "IS_BETA=$(echo "$CONFIG" | jq -r '.beta')" >> $GITHUB_ENV
+          echo "DOTNET_VERSION=$(echo "$CONFIG" | jq -r '."dotnet-version"')" >> $GITHUB_ENV
+          DOTNET_MAJOR=$(echo "$CONFIG" | jq -r '."dotnet-version"' | cut -d'.' -f1)
+          echo "DOTNET_TFM=net${DOTNET_MAJOR}.0" >> $GITHUB_ENV
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: ${{ env.DOTNET_VERSION }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "lts/*"
+
+      - name: Minify HTML
+        run: |
+          npx html-minifier-terser --collapse-boolean-attributes --collapse-whitespace --remove-comments --remove-optional-tags --remove-redundant-attributes --remove-script-type-attributes --remove-tag-whitespace --use-short-doctype --minify-css true --minify-js true -o IntroSkipper/Configuration/configPage.html IntroSkipper/Configuration/configPage.html
+
+      - name: Configure NuGet for beta
+        if: ${{ env.IS_BETA == 'true' }}
+        run: |
+          cp nuget/NuGet.Beta.Config IntroSkipper/NuGet.Config
+          dotnet nuget add source --username ${{ github.repository_owner }} --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github-jellyfin "https://nuget.pkg.github.com/jellyfin/index.json"
+          dotnet tool install --global dotnet-outdated-tool
+          dotnet outdated -pre Always -u -inc Jellyfin
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Run update version
+        uses: intro-skipper/intro-skipper-action-ts@main
+        with:
+          task-type: "updateVersion"
+
+      - name: Embed version info
+        run: |
+          GITHUB_SHA=${{ github.sha }}
+          sed -i "s/string\.Empty/\"$GITHUB_SHA\"/g" IntroSkipper/Helper/Commit.cs
+
+      - name: Build
+        run: dotnet build --configuration Release --no-restore
+
+      - name: Upload unsigned package artifacts
+        if: ${{ github.repository == 'intro-skipper/intro-skipper' && !inputs.skip_signing }}
+        id: upload-unsigned-artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: IntroSkipper-${{ env.NEW_FILE_VERSION }}-unsigned
+          path: IntroSkipper/bin/Release/${{ env.DOTNET_TFM }}/IntroSkipper.dll
+          if-no-files-found: error
+          retention-days: 1
+
+
+      - name: Sign package artifacts
+        if: ${{ github.repository == 'intro-skipper/intro-skipper' && !inputs.skip_signing }}
+        uses: signpath/github-action-submit-signing-request@v2.0
+        with:
+          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+          organization-id: '2533cbeb-14b8-4d23-905e-37196de94787'
+          project-slug: 'intro-skipper'
+          signing-policy-slug: 'release-signing'
+          github-artifact-id: '${{ steps.upload-unsigned-artifact.outputs.artifact-id }}'
+          wait-for-completion: true
+          # overwrite the unsigned files
+          output-artifact-directory: 'IntroSkipper/bin/Release/${{ env.DOTNET_TFM }}/'
+
+      - name: Create archive
+        run: zip -j "intro-skipper-v${{ env.NEW_FILE_VERSION }}.zip" IntroSkipper/bin/Release/${{ env.DOTNET_TFM }}/IntroSkipper.dll
+
+      - name: Remove old release if exits
+        if: ${{ github.repository == 'intro-skipper/intro-skipper-test' }}
+        run: gh release delete "${{ env.MAIN_VERSION }}/v${{ env.NEW_FILE_VERSION }}" --cleanup-tag --yes || true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create new release with tag
+        if: github.event_name != 'pull_request'
+        run: gh release create "${{ env.MAIN_VERSION }}/v${{ env.NEW_FILE_VERSION }}" "intro-skipper-v${{ env.NEW_FILE_VERSION }}.zip" --title "v${{ env.NEW_FILE_VERSION }}" --latest --generate-notes --target ${{ env.MAIN_VERSION }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Run validation and update script
+        uses: intro-skipper/intro-skipper-action-ts@main
+        with:
+          task-type: "updateManifest"
+        env:
+          GITHUB_REPO_VISIBILITY: ${{ github.event.repository.visibility }}
+          MAIN_VERSION: ${{ env.MAIN_VERSION }}
+          GITHUB_PAT: ${{ secrets.PAT }}
+
+      - name: Commit changes
+        if: success()
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add README.md IntroSkipper/IntroSkipper.csproj .github/ISSUE_TEMPLATE/bug_report_form.yml
+          git commit -m "release v${{ env.NEW_FILE_VERSION }}"
+          git push

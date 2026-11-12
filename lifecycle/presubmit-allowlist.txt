@@ -1,0 +1,11 @@
+# Presubmit allowlist — one pattern per line.
+# Lines containing any of these substrings are excluded from violation reports.
+# Comments start with #, blank lines ignored.
+#
+# Syntax:
+#   plain text     — substring match against added lines (e.g., 127.0.0.1)
+#   file:filename  — skip all changes in files whose path contains "filename"
+
+# Localhost / any-interface bind addresses
+127.0.0.1
+0.0.0.0

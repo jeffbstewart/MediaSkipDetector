@@ -1,0 +1,36 @@
+# Build outputs
+.gradle/
+.kotlin/
+build/
+out/
+bin/
+obj/
+
+# IDE
+.idea/
+*.iml
+.vs/
+*.suo
+*.user
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+*.egg-info/
+
+# .NET
+packages/
+
+# Runtime data
+data/
+
+# Claude Code
+.claude/
+claude.log
+
+# Secrets
+secrets/.env
+secrets/deploy.agent_visible_env
+secrets/*.agent_visible_env

@@ -1,0 +1,41 @@
+# The presubmit suite (forge-lint docs/requirements.md R3): the "verify" check
+# the main ruleset requires.  Zero secrets by policy (R6) — the forge
+# lint audits Actions secrets to empty.
+name: ci
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      # The repo's own project (src/); the vendored intro-skipper tree
+      # carries its own solutions and test project, which are upstream's
+      # to verify, not this presubmit's.
+      - name: Build
+        run: dotnet build --configuration Release src/MediaSkipDetector.csproj
+
+      # The forge's own merge-path protections (forge-lint docs/requirements.md
+      # R1-R8), asserted against this repo's pinned expectations.  The
+      # workflow token cannot read collaborator roles or Actions secrets,
+      # so those report UNVERIFIED (-allow-unverified downgrades them to
+      # warnings); the operator runs the same lint with an admin token
+      # for the full verdict.  Any readable rule that drifts still fails
+      # the PR.
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+
+      - name: Forge lint (merge-path protections)
+        env:
+          FORGE_LINT_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: go run github.com/jeffbstewart/forge-lint/cmd/forge-lint@v0.1.0 -config .github/forge-lint.yaml -allow-unverified
